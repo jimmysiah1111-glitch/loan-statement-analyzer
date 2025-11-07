@@ -5,18 +5,43 @@ from docx import Document
 from io import BytesIO
 import re
 from collections import defaultdict
+import fitz  # PyMuPDF，用于图片OCR
+from PIL import Image
+import pytesseract
 
 # -------------------------------------------------
-# 提取 PDF 文本
+# 提取 PDF 文本（支持图片OCR）
 # -------------------------------------------------
 def extract_text_from_pdf(file):
-    reader = PdfReader(file)
     text = ""
-    for page in reader.pages:
-        try:
-            text += page.extract_text() + "\n"
-        except:
-            pass
+
+    try:
+        reader = PdfReader(file)
+        for page in reader.pages:
+            page_text = page.extract_text() or ""
+            text += page_text + "\n"
+    except Exception as e:
+        st.warning(f"普通提取失败：{e}")
+
+    # 如果没提取到文字，改用 OCR
+    if not text.strip():
+        st.info("🔍 未检测到文本，尝试使用 OCR 识别（扫描账单）...")
+        text = extract_text_with_ocr(file)
+
+    return text
+
+
+# OCR识别
+def extract_text_with_ocr(file):
+    text = ""
+    pdf = fitz.open(stream=file.read(), filetype="pdf")
+
+    for page_num in range(len(pdf)):
+        page = pdf.load_page(page_num)
+        pix = page.get_pixmap()
+        img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
+        text += pytesseract.image_to_string(img, lang="eng") + "\n"
+
     return text
 
 
@@ -32,7 +57,7 @@ def extract_text_from_docx(file):
 
 
 # -------------------------------------------------
-# 智能解析交易文本（改进版）
+# 智能解析交易文本
 # -------------------------------------------------
 def parse_transactions(text):
     grouped_data = defaultdict(list)
@@ -40,12 +65,12 @@ def parse_transactions(text):
     current_name = None
 
     for line in lines:
-        # 识别客户名称（一般不含数字）
+        # 客户名
         if re.match(r"^[A-Za-z\s&.'()]+$", line, flags=re.I) or ("SDN BHD" in line.upper()):
             current_name = line.strip()
             continue
 
-        # 识别交易行（包含金额）
+        # 金额行
         if current_name and re.search(r"[\d\.,-]+", line):
             grouped_data[current_name].append(line)
 
@@ -53,22 +78,19 @@ def parse_transactions(text):
 
 
 # -------------------------------------------------
-# 生成 Word 报告（自动换行 + UTF-8 兼容）
+# 生成 Word 报告
 # -------------------------------------------------
 def generate_word_report(grouped_data):
     doc = Document()
     doc.add_heading("转账整理报告", level=1)
 
     for name, records in grouped_data.items():
-        safe_name = str(name).encode("utf-8", "ignore").decode("utf-8", "ignore")
-        doc.add_heading(safe_name, level=2)
-
+        doc.add_heading(name, level=2)
         if not records:
             doc.add_paragraph("(无交易记录)")
         else:
             for record in records:
-                safe_record = str(record).encode("utf-8", "ignore").decode("utf-8", "ignore")
-                doc.add_paragraph(safe_record)
+                doc.add_paragraph(record)
 
     output = BytesIO()
     doc.save(output)
@@ -98,15 +120,12 @@ if uploaded_file:
         st.success(f"✅ 整理完成，共识别 {len(grouped_data)} 位客户。")
 
         if st.button("📘 生成 Word 报告"):
-            try:
-                word_file = generate_word_report(grouped_data)
-                st.download_button(
-                    label="📥 下载 Word 文件",
-                    data=word_file,
-                    file_name="转账整理报告.docx",
-                    mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-                )
-            except Exception as e:
-                st.error(f"生成报告时出错：{e}")
+            word_file = generate_word_report(grouped_data)
+            st.download_button(
+                label="📥 下载 Word 文件",
+                data=word_file,
+                file_name="转账整理报告.docx",
+                mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+            )
     else:
-        st.warning("⚠️ 没有识别到客户或交易记录，请确认账单文字清晰。")
+        st.warning("⚠️ 没有识别到客户或交易记录，请确认账单是文字版或扫描清晰。")
