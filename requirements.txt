@@ -1,5 +1,7 @@
 streamlit
 pandas
-PyPDF2
 python-docx
-lxml
+PyPDF2
+PyMuPDF
+pytesseract
+Pillow
