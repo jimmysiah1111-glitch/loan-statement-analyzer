@@ -4,27 +4,29 @@ from PyPDF2 import PdfReader
 from docx import Document
 from io import BytesIO
 from collections import defaultdict
-from docx.shared import Inches
 
 # -------------------------------
-# 函数：从 PDF 文件提取文本
+# 从 PDF 提取文字
 # -------------------------------
 def extract_text_from_pdf(file):
-    reader = PdfReader(file)
     text = ""
+    reader = PdfReader(file)
     for page in reader.pages:
-        text += page.extract_text() + "\n"
+        try:
+            text += page.extract_text() + "\n"
+        except Exception:
+            pass
     return text
 
 # -------------------------------
-# 函数：从 Word 文件提取文本
+# 从 Word 提取文字
 # -------------------------------
 def extract_text_from_docx(file):
     doc = Document(file)
     return "\n".join([p.text for p in doc.paragraphs])
 
 # -------------------------------
-# 函数：提取转账记录
+# 提取转账记录
 # -------------------------------
 def extract_transactions(text):
     lines = text.split("\n")
@@ -34,20 +36,20 @@ def extract_transactions(text):
         line = line.strip()
         if not line:
             continue
-        # 忽略 Cash Deposit
+        # 忽略 cash deposit
         if "cash deposit" in line.lower():
             continue
-        # 识别名字
-        if any(keyword in line.upper() for keyword in ["SDN", "BHD", "BIN", "BINTI", "BINTI", "TRADING", "ENTERPRISE"]):
+        # 判断是否是姓名行
+        if any(keyword in line.upper() for keyword in ["SDN", "BHD", "BIN", "BINTI", "TRADING", "ENTERPRISE", "CO.", "COMPANY"]):
             current_name = line.strip()
-        # 识别转账记录
+        # 判断是否是转账行（包含数字）
         elif any(char.isdigit() for char in line):
             if current_name:
                 transactions.append((current_name, line))
     return transactions
 
 # -------------------------------
-# 函数：整理记录
+# 按客户名汇总记录
 # -------------------------------
 def summarize_transactions(all_transactions):
     grouped = defaultdict(list)
@@ -56,7 +58,7 @@ def summarize_transactions(all_transactions):
     return grouped
 
 # -------------------------------
-# 函数：生成 Word 文件
+# 生成 Word 文件
 # -------------------------------
 def generate_word_report(grouped_data):
     doc = Document()
@@ -65,7 +67,9 @@ def generate_word_report(grouped_data):
     for name, records in grouped_data.items():
         doc.add_paragraph(name, style="Heading 2")
         for record in records:
-            doc.add_paragraph(record)
+            # 清理非法字符
+            safe_text = ''.join(ch for ch in record if 32 <= ord(ch) <= 126 or ch in '\n\r\t -+,.*/')
+            doc.add_paragraph(safe_text)
         doc.add_paragraph("")  # 空行分隔
 
     bio = BytesIO()
@@ -74,13 +78,13 @@ def generate_word_report(grouped_data):
     return bio
 
 # -------------------------------
-# Streamlit 界面
+# Streamlit 页面
 # -------------------------------
 st.set_page_config(page_title="贷款转账整理助手", page_icon="💰", layout="wide")
 st.title("💰 贷款转账记录自动整理工具")
 
-st.write("上传多个银行账单（PDF 或 Word 格式），系统将自动：")
 st.markdown("""
+上传多个银行账单（PDF 或 Word 格式），系统将自动：
 - 提取所有转账记录  
 - 忽略 Cash Deposit  
 - 自动合并同名客户  
