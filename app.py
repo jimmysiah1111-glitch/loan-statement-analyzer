@@ -5,12 +5,12 @@ from docx import Document
 from io import BytesIO
 import re
 from collections import defaultdict
-import fitz  # PyMuPDF，用于图片OCR
+import fitz  # PyMuPDF
 from PIL import Image
 import pytesseract
 
 # -------------------------------------------------
-# 提取 PDF 文本（支持图片OCR）
+# 提取 PDF 文本（含 OCR 支持）
 # -------------------------------------------------
 def extract_text_from_pdf(file):
     text = ""
@@ -23,15 +23,15 @@ def extract_text_from_pdf(file):
     except Exception as e:
         st.warning(f"普通提取失败：{e}")
 
-    # 如果没提取到文字，改用 OCR
+    # 如果没提取到文字，则启用 OCR
     if not text.strip():
-        st.info("🔍 未检测到文本，尝试使用 OCR 识别（扫描账单）...")
+        st.info("🔍 未检测到文本，尝试使用 OCR 识别扫描账单...")
         text = extract_text_with_ocr(file)
 
     return text
 
 
-# OCR识别
+# OCR 识别（支持中文 + 英文 + 马来语）
 def extract_text_with_ocr(file):
     text = ""
     pdf = fitz.open(stream=file.read(), filetype="pdf")
@@ -40,7 +40,8 @@ def extract_text_with_ocr(file):
         page = pdf.load_page(page_num)
         pix = page.get_pixmap()
         img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
-        text += pytesseract.image_to_string(img, lang="eng") + "\n"
+        # 多语言 OCR（需服务器支持语言包 eng+chi_sim+msa）
+        text += pytesseract.image_to_string(img, lang="eng+chi_sim+msa") + "\n"
 
     return text
 
@@ -65,12 +66,12 @@ def parse_transactions(text):
     current_name = None
 
     for line in lines:
-        # 客户名
+        # 判断是否为客户名
         if re.match(r"^[A-Za-z\s&.'()]+$", line, flags=re.I) or ("SDN BHD" in line.upper()):
             current_name = line.strip()
             continue
 
-        # 金额行
+        # 判断是否为交易金额行
         if current_name and re.search(r"[\d\.,-]+", line):
             grouped_data[current_name].append(line)
 
@@ -103,8 +104,8 @@ def generate_word_report(grouped_data):
 # -------------------------------------------------
 st.set_page_config(page_title="账单自动整理助手", page_icon="💰")
 
-st.title("📄 账单自动整理助手（支持多银行）")
-st.markdown("上传你的银行账单（PDF 或 Word），自动识别客户与交易记录并导出 Word 报告。")
+st.title("📄 账单自动整理助手（支持多银行 + OCR）")
+st.markdown("上传银行账单（PDF / Word），自动识别客户与交易记录并导出 Word 报告。支持扫描账单识别。")
 
 uploaded_file = st.file_uploader("上传账单文件", type=["pdf", "docx"])
 
