@@ -4,6 +4,7 @@ from PyPDF2 import PdfReader
 from docx import Document
 from io import BytesIO
 from collections import defaultdict
+import re
 
 # -------------------------------
 # 从 PDF 提取文字
@@ -40,7 +41,10 @@ def extract_transactions(text):
         if "cash deposit" in line.lower():
             continue
         # 判断是否是姓名行
-        if any(keyword in line.upper() for keyword in ["SDN", "BHD", "BIN", "BINTI", "TRADING", "ENTERPRISE", "CO.", "COMPANY"]):
+        if any(keyword in line.upper() for keyword in [
+            "SDN", "BHD", "BIN", "BINTI", "TRADING", "ENTERPRISE",
+            "CO.", "COMPANY", "TRD", "CAPITAL", "RESOURCES", "SERVICES"
+        ]):
             current_name = line.strip()
         # 判断是否是转账行（包含数字）
         elif any(char.isdigit() for char in line):
@@ -58,6 +62,14 @@ def summarize_transactions(all_transactions):
     return grouped
 
 # -------------------------------
+# 安全清理文本（防止 docx 报错）
+# -------------------------------
+def clean_text(text):
+    # 删除所有控制字符，只保留常见文字、数字、符号
+    safe = re.sub(r"[^\x09\x0A\x0D\x20-\x7E\u4e00-\u9fffA-Za-z0-9.,;:?!@#$/()\-+ ]", "", text)
+    return safe.strip()
+
+# -------------------------------
 # 生成 Word 文件
 # -------------------------------
 def generate_word_report(grouped_data):
@@ -67,8 +79,9 @@ def generate_word_report(grouped_data):
     for name, records in grouped_data.items():
         doc.add_paragraph(name, style="Heading 2")
         for record in records:
-            # 清理非法字符
-            safe_text = ''.join(ch for ch in record if 32 <= ord(ch) <= 126 or ch in '\n\r\t -+,.*/')
+            safe_text = clean_text(record)
+            if not safe_text:
+                safe_text = "(空行或无法识别内容)"
             doc.add_paragraph(safe_text)
         doc.add_paragraph("")  # 空行分隔
 
