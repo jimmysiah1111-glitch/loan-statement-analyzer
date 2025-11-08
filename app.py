@@ -1,3 +1,6 @@
+if uploaded_file is not None:
+    text = extract_text_from_pdf(uploaded_file)
+    st.text_area("识别到的原始文字：", text[:3000])  # 显示前3000字符
 import streamlit as st
 import fitz  # PyMuPDF
 import pytesseract
