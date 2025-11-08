@@ -1,7 +1,7 @@
 streamlit
-pandas
-python-docx
-PyPDF2
-PyMuPDF
+pymupdf
 pytesseract
-Pillow
+pillow
+opencv-python-headless
+pdfplumber
+python-docx
